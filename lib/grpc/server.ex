@@ -252,7 +252,7 @@ defmodule GRPC.Server do
            codec: codec,
            adapter: adapter,
            payload: payload,
-           client_type: :web
+           access_mode: :http_transcoding
          } = stream,
          func_name
        ) do
