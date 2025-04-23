@@ -62,6 +62,7 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
          {:ok, compressor} <- find_compressor(req, server) do
       stream_pid = self()
       http_transcode = access_mode == :http_transcoding
+      request_headers = :cowboy_req.headers(req);
 
       stream = %GRPC.Server.Stream{
         server: server,
@@ -71,6 +72,7 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
         local: opts[:local],
         codec: codec,
         http_method: http_method,
+        http_request_headers: request_headers,
         http_transcode: http_transcode,
         compressor: compressor,
         is_preflight?: preflight?(req),
@@ -82,7 +84,7 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
 
       req = :cowboy_req.set_resp_headers(HTTP2.server_headers(stream), req)
 
-      timeout = :cowboy_req.header("grpc-timeout", req)
+      timeout = Map.get(request_headers, "grpc-timeout")
 
       timer_ref =
         if is_binary(timeout) do
