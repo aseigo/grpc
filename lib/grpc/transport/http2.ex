@@ -70,7 +70,8 @@ defmodule GRPC.Transport.HTTP2 do
   # to avoid this kind of trouble, use application/grpc by default
   defp content_type(_, GRPC.Codec.Proto), do: "application/grpc"
   defp content_type(_, codec = GRPC.Codec.WebText), do: "application/grpc-web-#{codec.name()}"
-  defp content_type(_, codec), do: "application/grpc+#{codec.name()}"
+  defp content_type(_, codec) when is_atom(codec), do: "application/grpc+#{codec.name()}"
+  defp content_type(_, codec) when is_map(codec), do: "application/grpc+#{codec.name}"
 
   def extract_metadata(headers) do
     headers
