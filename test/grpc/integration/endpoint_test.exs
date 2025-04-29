@@ -20,8 +20,8 @@ defmodule GRPC.Integration.EndpointTest do
   defmodule HelloHaltInterceptor do
     def init(_), do: []
 
-    def call(_, stream, _next, _) do
-      {:ok, stream, %Helloworld.HelloReply{message: "Hello by interceptor"}}
+    def call(_request, _stream, _state) do
+      {:halt, %Helloworld.HelloReply{message: "Hello by interceptor"}}
     end
   end
 
@@ -63,47 +63,47 @@ defmodule GRPC.Integration.EndpointTest do
     run FeatureServer
   end
 
-  test "endpoint uses Logger interceptor for unary" do
-    assert capture_log(fn ->
-             run_endpoint(HelloEndpoint, fn port ->
-               {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
+    test "endpoint uses Logger interceptor for unary" do
+      assert capture_log(fn ->
+               run_endpoint(HelloEndpoint, fn port ->
+                 {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
-               req = %Helloworld.HelloRequest{name: "Elixir"}
-               {:ok, reply} = channel |> Helloworld.Greeter.Stub.say_hello(req)
-               assert reply.message == "Hello, Elixir"
-             end)
-           end) =~ "GRPC.Integration.EndpointTest.HelloServer.say_hello"
-  end
+                 req = %Helloworld.HelloRequest{name: "Elixir"}
+                 {:ok, reply} = channel |> Helloworld.Greeter.Stub.say_hello(req)
+                 assert reply.message == "Hello, Elixir"
+               end)
+             end) =~ "GRPC.Integration.EndpointTest.HelloServer.say_hello"
+    end
 
-  test "endpoint uses Logger interceptor for streaming server" do
-    assert capture_log(fn ->
-             run_endpoint(FeatureEndpoint, fn port ->
-               {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
+    test "endpoint uses Logger interceptor for streaming server" do
+      assert capture_log(fn ->
+               run_endpoint(FeatureEndpoint, fn port ->
+                 {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
-               point = %Routeguide.Point{latitude: 409_146_138, longitude: -746_188_906}
-               rect = %Routeguide.Rectangle{hi: point, lo: point}
-               {:ok, enum} = channel |> Routeguide.RouteGuide.Stub.list_features(rect)
-               loc = %Routeguide.Feature{location: point, name: "409146138,-746188906"}
-               assert [{:ok, loc}, {:ok, loc}] == Enum.to_list(enum)
-             end)
-           end) =~ "GRPC.Integration.EndpointTest.FeatureServer.list_features"
-  end
+                 point = %Routeguide.Point{latitude: 409_146_138, longitude: -746_188_906}
+                 rect = %Routeguide.Rectangle{hi: point, lo: point}
+                 {:ok, enum} = channel |> Routeguide.RouteGuide.Stub.list_features(rect)
+                 loc = %Routeguide.Feature{location: point, name: "409146138,-746188906"}
+                 assert [{:ok, loc}, {:ok, loc}] == Enum.to_list(enum)
+               end)
+             end) =~ "GRPC.Integration.EndpointTest.FeatureServer.list_features"
+    end
 
-  test "endpoint uses Logger interceptor for streaming client" do
-    assert capture_log(fn ->
-             run_endpoint(FeatureEndpoint, fn port ->
-               {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
+    test "endpoint uses Logger interceptor for streaming client" do
+      assert capture_log(fn ->
+               run_endpoint(FeatureEndpoint, fn port ->
+                 {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
-               point0 = %Routeguide.Point{latitude: 0, longitude: -1}
-               point1 = %Routeguide.Point{latitude: 1, longitude: 1}
-               stream = channel |> Routeguide.RouteGuide.Stub.record_route()
-               GRPC.Stub.send_request(stream, point0)
-               GRPC.Stub.send_request(stream, point1, end_stream: true)
-               reply = GRPC.Stub.recv(stream)
-               assert {:ok, %Routeguide.RouteSummary{point_count: 2}} == reply
-             end)
-           end) =~ "GRPC.Integration.EndpointTest.FeatureServer.record_route"
-  end
+                 point0 = %Routeguide.Point{latitude: 0, longitude: -1}
+                 point1 = %Routeguide.Point{latitude: 1, longitude: 1}
+                 stream = channel |> Routeguide.RouteGuide.Stub.record_route()
+                 GRPC.Stub.send_request(stream, point0)
+                 GRPC.Stub.send_request(stream, point1, end_stream: true)
+                 reply = GRPC.Stub.recv(stream)
+                 assert {:ok, %Routeguide.RouteSummary{point_count: 2}} == reply
+               end)
+             end) =~ "GRPC.Integration.EndpointTest.FeatureServer.record_route"
+    end
 
   test "endpoint uses Logger and custom interceptor" do
     assert capture_log(fn ->
@@ -111,7 +111,8 @@ defmodule GRPC.Integration.EndpointTest do
                {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
                point = %Routeguide.Point{latitude: 409_146_138, longitude: -746_188_906}
-               {:ok, feature} = channel |> Routeguide.RouteGuide.Stub.get_feature(point)
+
+               {:ok, feature} = Routeguide.RouteGuide.Stub.get_feature(channel, point)
 
                assert feature ==
                         %Routeguide.Feature{location: point, name: "409146138,-746188906"}

@@ -28,7 +28,8 @@ defmodule GRPC.EndpointTest do
   end
 
   test "intercept works" do
-    assert [{Interceptor1, nil}, {Interceptor2, [foo: 1]}] == FooEndpoint.__meta__(:interceptors)
+    interceptors = GRPC.Endpoint.interceptors(FooEndpoint)
+    assert [{Interceptor1, nil}, {Interceptor2, [foo: 1]}] == interceptors.endpoint
   end
 
   test "run creates servers" do
@@ -37,9 +38,10 @@ defmodule GRPC.EndpointTest do
 
   test "run creates server_interceptors" do
     mw = [{Interceptor4, []}]
+    interceptors = GRPC.Endpoint.interceptors(FooEndpoint)
 
     assert %{Server1 => [{Interceptor3, [foo: :bar]}], Server2 => mw, Server3 => mw} ==
-             FooEndpoint.__meta__(:server_interceptors)
+             interceptors.servers
   end
 
   test "stop/2 works" do

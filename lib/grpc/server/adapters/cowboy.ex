@@ -195,20 +195,30 @@ defmodule GRPC.Server.Adapters.Cowboy do
   end
 
   defp build_handlers(endpoint, opts) do
+    interceptors = GRPC.Endpoint.interceptors(endpoint)
+
     :servers
     |> endpoint.__meta__()
     |> Enum.flat_map(fn server ->
       routes = server.__meta__(:routes)
-      Enum.map(routes, &build_route(&1, endpoint, server, opts))
+      Enum.map(routes, &build_route(&1, endpoint, server, interceptors, opts))
     end)
   end
 
-  defp build_route({:grpc, path}, endpoint, server, opts) do
-    {path, GRPC.Server.Adapters.Cowboy.Handler, {endpoint, server, path, Enum.into(opts, %{})}}
+  defp build_route({:grpc, route}, endpoint, server, interceptors, opts) do
+    {route, GRPC.Server.Adapters.Cowboy.Handler,
+     {endpoint, server, route, interceptors, Enum.into(opts, %{})}}
   end
 
-  defp build_route({:http_transcode, {_method, path, match}}, endpoint, server, opts) do
-    {match, GRPC.Server.Adapters.Cowboy.Handler, {endpoint, server, path, Enum.into(opts, %{})}}
+  defp build_route(
+         {:http_transcode, {_method, route, match}},
+         endpoint,
+         server,
+         interceptors,
+         opts
+       ) do
+    {match, GRPC.Server.Adapters.Cowboy.Handler,
+     {endpoint, server, route, interceptors, Enum.into(opts, %{})}}
   end
 
   defp cowboy_start_args(endpoint, port, opts) do

@@ -8,6 +8,7 @@ defmodule GRPC.Server.Interceptors.CORS do
     * `:allow_headers` - A string containing the allowed headers, or a function capture
       (e.g. `&MyApp.MyModule.function/2)`) which takes a `req` and a `stream` and returns a string. Defaults to `nil`.
       If defined as `nil`, the value of the `"access-control-request-headers"` request header from the client will be used in the response.
+    * `:allow_methods` - A string containing the allowed HTTP verbs. Defaults to `POST, OPTIONS`
 
   ## Usage
 
@@ -45,7 +46,7 @@ defmodule GRPC.Server.Interceptors.CORS do
 
     allow_origin =
       case opts[:allow_origin] do
-        {:&, [], [{:/, [], [_signature, 2]}]} = fun ->
+        fun when is_function(fun, 2) ->
           fun
 
         binary when is_binary(binary) ->
@@ -58,7 +59,7 @@ defmodule GRPC.Server.Interceptors.CORS do
 
     allow_headers =
       case opts[:allow_headers] do
-        {:&, [], [{:/, [], [_signature, 2]}]} = fun ->
+        fun when is_function(fun, 2) ->
           fun
 
         binary when is_binary(binary) ->
@@ -72,22 +73,35 @@ defmodule GRPC.Server.Interceptors.CORS do
                 ":allow_headers must be a string, a 2-arity remote function, or nil, got: #{inspect(other)}"
       end
 
-    {allow_origin, allow_headers}
+    allow_methods =
+      case Keyword.get(opts, :allow_methods) do
+        binary when is_binary(binary) ->
+          binary
+
+        nil ->
+          "POST, OPTIONS"
+
+        other ->
+          raise ArgumentError, "allow_methods must be a string or nil, got: #{inspect(other)}"
+      end
+
+    {allow_origin, allow_headers, allow_methods}
   end
 
   @impl true
-  def call(req, stream, next, {allow_origin, allow_headers}) do
+  def call(req, stream, {allow_origin, allow_headers, allow_methods}) do
     if stream.access_mode != :grpc and
          Map.get(stream.http_request_headers, "sec-fetch-mode") == "cors" do
       headers =
         %{}
         |> add_allowed_origins(req, stream, allow_origin)
         |> add_allowed_headers(req, stream, allow_headers)
+        |> add_allowed_methods(allow_methods)
 
       stream.adapter.set_headers(stream.payload, headers)
     end
 
-    next.(req, stream)
+    {:cont, req, stream}
   end
 
   defp add_allowed_origins(headers, req, stream, allow) do
@@ -118,4 +132,8 @@ defmodule GRPC.Server.Interceptors.CORS do
   end
 
   defp add_allowed_headers(headers, _req, _stream, _allowed), do: headers
+
+  defp add_allowed_methods(headers, allow) do
+    Map.put(headers, "access-control-allow-methods", allow)
+  end
 end

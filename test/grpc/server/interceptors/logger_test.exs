@@ -28,7 +28,6 @@ defmodule GRPC.Server.Interceptors.LoggerTest do
     LoggerInterceptor.call(
       request,
       stream,
-      fn ^request, ^stream -> {:ok, :ok} end,
       LoggerInterceptor.init(level: :info)
     )
 
@@ -39,7 +38,6 @@ defmodule GRPC.Server.Interceptors.LoggerTest do
     LoggerInterceptor.call(
       :request,
       stream,
-      fn :request, ^stream -> {:ok, :ok} end,
       LoggerInterceptor.init(level: :info)
     )
 
@@ -51,12 +49,12 @@ defmodule GRPC.Server.Interceptors.LoggerTest do
 
     request = %FakeRequest{}
     stream = %Stream{server: @server_name, rpc: @rpc, request_id: nil}
-    next = fn _stream, _request -> {:ok, :ok} end
     opts = LoggerInterceptor.init([])
 
     logs =
       capture_log(fn ->
-        LoggerInterceptor.call(request, stream, next, opts)
+        {:after, {m, f, a}, _request, _stream} = LoggerInterceptor.call(request, stream, opts)
+        apply(m, f, a ++ [{:ok, :ok}])
       end)
 
     assert logs =~ ~r/\[info\]\s+Handled by #{inspect(@server_name)}/
@@ -67,41 +65,35 @@ defmodule GRPC.Server.Interceptors.LoggerTest do
 
     request = %FakeRequest{}
     stream = %Stream{server: @server_name, rpc: @rpc, request_id: nil}
-    next = fn _stream, _request -> {:ok, :ok} end
     opts = LoggerInterceptor.init(level: :warning)
 
     logs =
       capture_log(fn ->
-        LoggerInterceptor.call(request, stream, next, opts)
+        {:after, {m, f, a}, _request, _stream} = LoggerInterceptor.call(request, stream, opts)
+        apply(m, f, a ++ [{:ok, :ok}])
       end)
 
     assert logs =~ ~r/\[warn(?:ing)?\]\s+Handled by #{inspect(@server_name)}/
   end
 
   @tag capture_log: true
-  test "calls next when above :logger level" do
+  test "returns :after when above :logger level" do
     Logger.configure(level: :all)
 
     request = %FakeRequest{}
     stream = %Stream{server: @server_name, rpc: @rpc, request_id: nil}
-    next = fn stream, req -> send(self(), {:next_called, stream, req}) end
     opts = LoggerInterceptor.init(level: :info)
 
-    LoggerInterceptor.call(request, stream, next, opts)
-
-    assert_receive {:next_called, ^request, ^stream}
+    assert({:after, _mfa, ^request, ^stream} = LoggerInterceptor.call(request, stream, opts))
   end
 
-  test "calls next when below :logger level" do
+  test "returns :cont when below :logger level" do
     Logger.configure(level: :warning)
 
     request = %FakeRequest{}
     stream = %Stream{server: @server_name, rpc: @rpc, request_id: nil}
-    next = fn stream, req -> send(self(), {:next_called, stream, req}) end
     opts = LoggerInterceptor.init(level: :info)
 
-    LoggerInterceptor.call(request, stream, next, opts)
-
-    assert_receive {:next_called, ^request, ^stream}
+    assert({:cont, ^request, ^stream} = LoggerInterceptor.call(request, stream, opts))
   end
 end

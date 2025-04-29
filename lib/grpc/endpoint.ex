@@ -14,10 +14,16 @@ defmodule GRPC.Endpoint do
       end
 
   Interceptors will be run around your rpc calls from top to bottom. And you can even set
-  interceptors for some of servers. In the above example, `[GRPC.Server.Interceptors.Logger, Other.Interceptor,
+  interceptors for specific servers. In the above example, `[GRPC.Server.Interceptors.Logger, Other.Interceptor,
   HelloHaltInterceptor]` will be run for `HelloServer`, and `[GRPC.Server.Interceptors.Logger, Other.Interceptor]`
   will be run for `FeatureServer`.
   """
+
+  @type initialized_intercepter :: {module(), term()}
+  @type intercepters :: %{
+          endpoint: [initialized_intercepter()],
+          servers: %{[module()] => [initialized_intercepter()]}
+        }
 
   @doc false
   defmacro __using__(_opts) do
@@ -36,14 +42,10 @@ defmodule GRPC.Endpoint do
       Module.get_attribute(env.module, :interceptors)
       |> Macro.escape()
       |> Enum.reverse()
-      |> init_interceptors()
-
-    servers = Module.get_attribute(env.module, :servers)
 
     servers =
-      Enum.map(servers, fn {ss, opts} ->
-        opts = Keyword.validate!(opts, [:interceptors])
-
+      Module.get_attribute(env.module, :servers)
+      |> Enum.map(fn {server, opts} ->
         run_args =
           if interceptors = opts[:interceptors] do
             %{interceptors: interceptors}
@@ -51,15 +53,15 @@ defmodule GRPC.Endpoint do
             %{}
           end
 
-        {ss, run_args}
+        {server, run_args}
       end)
 
     server_interceptors = server_interceptors(servers, %{})
-    servers = parse_servers(servers)
+    server_modules = server_module_names(servers)
 
     quote do
       def __meta__(:interceptors), do: unquote(interceptors)
-      def __meta__(:servers), do: unquote(servers)
+      def __meta__(:servers), do: unquote(server_modules)
       def __meta__(:server_interceptors), do: unquote(Macro.escape(server_interceptors))
     end
   end
@@ -112,13 +114,39 @@ defmodule GRPC.Endpoint do
     end
   end
 
+  @spec interceptors(endpoint :: module()) :: intercepters()
+  def interceptors(endpoint) do
+    %{
+      endpoint: init_endpoint_interceptors(endpoint),
+      servers: init_server_interceptors(endpoint)
+    }
+  end
+
+  defp init_interceptor({module, opts}), do: {module, module.init(opts)}
+  defp init_interceptor(module), do: {module, module.init([])}
+
+  defp init_endpoint_interceptors(endpoint) do
+    :interceptors
+    |> endpoint.__meta__()
+    |> Enum.map(&init_interceptor/1)
+  end
+
+  defp init_server_interceptors(endpoint) do
+    :server_interceptors
+    |> endpoint.__meta__()
+    |> Enum.reduce(%{}, fn {module, interceptors}, acc ->
+      interceptors = Enum.map(interceptors, &init_interceptor/1)
+      Map.put(acc, module, interceptors)
+    end)
+  end
+
   defp server_interceptors([], acc), do: acc
 
-  defp server_interceptors([{servers, %{interceptors: interceptors}} | tail], acc0)
+  defp server_interceptors([{servers, %{interceptors: interceptors}} | tail], acc)
        when is_list(interceptors) do
     acc =
-      Enum.reduce(List.wrap(servers), acc0, fn server, acc ->
-        Map.put(acc, server, init_interceptors(interceptors))
+      Enum.reduce(List.wrap(servers), acc, fn server, acc ->
+        Map.put(acc, server, interceptors)
       end)
 
     server_interceptors(tail, acc)
@@ -128,19 +156,9 @@ defmodule GRPC.Endpoint do
     server_interceptors(tail, acc)
   end
 
-  defp parse_servers(servers) do
+  defp server_module_names(servers) do
     servers
     |> Enum.map(fn {server, _} -> server end)
     |> List.flatten()
-  end
-
-  defp init_interceptors(interceptors) do
-    Enum.map(interceptors, fn
-      {interceptor, opts} ->
-        {interceptor, interceptor.init(opts)}
-
-      interceptor ->
-        {interceptor, interceptor.init([])}
-    end)
   end
 end

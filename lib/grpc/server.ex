@@ -217,20 +217,20 @@ defmodule GRPC.Server do
   def call(
         _service_mod,
         stream,
-        {_, {req_mod, req_stream}, {res_mod, res_stream}, _options} = rpc,
+        {_, {request_mod, request_stream?}, {response_mod, response_stream?}, _options} = rpc,
         func_name
       ) do
     request_id = generate_request_id()
 
     stream = %{
       stream
-      | request_mod: req_mod,
+      | request_mod: request_mod,
         request_id: request_id,
-        response_mod: res_mod,
+        response_mod: response_mod,
         rpc: rpc
     }
 
-    handle_request(req_stream, res_stream, stream, func_name)
+    handle_request(request_stream?, response_stream?, stream, func_name)
   end
 
   defp generate_request_id do
@@ -243,9 +243,9 @@ defmodule GRPC.Server do
     Base.url_encode64(binary, padding: false)
   end
 
-  defp handle_request(req_s, res_s, %{server: server} = stream, func_name) do
+  defp handle_request(request_stream?, response_stream?, %{server: server} = stream, func_name) do
     if function_exported?(server, func_name, 2) do
-      do_handle_request(req_s, res_s, stream, func_name)
+      do_handle_request(request_stream?, response_stream?, stream, func_name)
     else
       {:error, GRPC.RPCError.new(:unimplemented)}
     end
@@ -253,7 +253,7 @@ defmodule GRPC.Server do
 
   defp do_handle_request(
          false,
-         res_stream,
+         response_stream?,
          %{
            rpc: rpc,
            request_mod: req_mod,
@@ -272,20 +272,20 @@ defmodule GRPC.Server do
 
     case Transcode.map_request(rule.value, request_body, bindings, qs, req_mod) do
       {:ok, request} ->
-        call_with_interceptors(res_stream, func_name, stream, request)
+        call_with_interceptors(response_stream?, func_name, stream, request)
 
       resp = {:error, _} ->
         resp
     end
   end
 
-  defp do_handle_request(false, res_stream, %{is_preflight?: true} = stream, func_name) do
-    call_with_interceptors(res_stream, func_name, stream, [])
+  defp do_handle_request(false, response_stream?, %{is_preflight?: true} = stream, func_name) do
+    call_with_interceptors(response_stream?, func_name, stream, [])
   end
 
   defp do_handle_request(
          false,
-         res_stream,
+         response_stream?,
          %{request_mod: req_mod, codec: codec, adapter: adapter, payload: payload} = stream,
          func_name
        ) do
@@ -302,7 +302,7 @@ defmodule GRPC.Server do
       {:ok, message} ->
         request = codec.decode(message, req_mod)
 
-        call_with_interceptors(res_stream, func_name, stream, request)
+        call_with_interceptors(response_stream?, func_name, stream, request)
 
       resp = {:error, _} ->
         resp
@@ -311,7 +311,7 @@ defmodule GRPC.Server do
 
   defp do_handle_request(
          true,
-         res_stream,
+         response_stream?,
          %{
            request_mod: req_mod,
            codec: codec,
@@ -340,47 +340,70 @@ defmodule GRPC.Server do
         end
       end)
 
-    call_with_interceptors(res_stream, func_name, stream, reading_stream)
+    call_with_interceptors(response_stream?, func_name, stream, reading_stream)
   end
 
   defp call_with_interceptors(
-         res_stream,
+         response_stream?,
          func_name,
-         %{server: server, endpoint: endpoint} = stream,
+         %{server: server, endpoint: endpoint, interceptors: interceptors} = stream,
          req
        ) do
     GRPC.Telemetry.server_span(server, endpoint, func_name, stream, fn ->
-      last = fn r, s ->
-        # no response is rquired for preflight requests
-        reply = if stream.is_preflight?, do: [], else: apply(server, func_name, [r, s])
+      server_interceptors = Map.get(interceptors.servers, server, [])
 
-        if res_stream do
-          {:ok, stream}
-        else
-          {:ok, stream, reply}
-        end
+      with {:cont, req, stream, after_calls} <-
+             run_interceptors(req, stream, [], interceptors.endpoint),
+           {:cont, req, stream, after_calls} <-
+             run_interceptors(req, stream, after_calls, server_interceptors) do
+        reply = generate_reply(server, func_name, req, stream)
+        post_interception(response_stream?, stream, reply, after_calls)
+      else
+        {:halt, reply, after_calls} ->
+          post_interception(response_stream?, stream, reply, after_calls)
+
+        {:error, error} ->
+          {:error, GRPC.RPCError.new(error)}
       end
-
-      interceptors = interceptors(endpoint, server)
-
-      next =
-        Enum.reduce(interceptors, last, fn {interceptor, opts}, acc ->
-          fn r, s -> interceptor.call(r, s, acc, opts) end
-        end)
-
-      next.(req, stream)
     end)
   end
 
-  defp interceptors(nil, _), do: []
-
-  defp interceptors(endpoint, server) do
-    interceptors =
-      endpoint.__meta__(:interceptors) ++
-        Map.get(endpoint.__meta__(:server_interceptors), server, [])
-
-    interceptors |> Enum.reverse()
+  defp post_interception(response_stream?, stream, reply, after_calls) do
+    response = wrap_reply(reply, stream, response_stream?)
+    run_after_calls(after_calls, response)
+    response
   end
+
+  defp run_interceptors(req, stream, after_calls, []), do: {:cont, req, stream, after_calls}
+
+  defp run_interceptors(req, stream, after_calls, [{interceptor, state} | interceptors]) do
+    case interceptor.call(req, stream, state) do
+      {:cont, req, stream} ->
+        run_interceptors(req, stream, after_calls, interceptors)
+
+      {:after, after_call, req, stream} ->
+        run_interceptors(req, stream, [after_call | after_calls], interceptors)
+
+      {:halt, reply} ->
+        {:halt, reply, after_calls}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  def run_after_calls([], _reply), do: :ok
+
+  def run_after_calls([{m, f, a} | after_calls], reply) do
+    apply(m, f, a ++ [reply])
+    run_after_calls(after_calls, reply)
+  end
+
+  defp generate_reply(_server, _func_name, _req, %{is_preflight?: true}), do: []
+  defp generate_reply(server, func_name, req, stream), do: apply(server, func_name, [req, stream])
+
+  defp wrap_reply(_reply, stream, true), do: {:ok, stream}
+  defp wrap_reply(reply, stream, _response_stream?), do: {:ok, stream, reply}
 
   @doc """
   Send streaming reply.

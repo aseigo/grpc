@@ -58,34 +58,33 @@ defmodule GRPC.Server.Interceptors.CORSTest do
   def allow_origin(_req, _stream), do: @function_header_value
   def allow_headers(_req, _stream), do: @custom_allowed_headers
 
-  def create_stream() do
+  def create_stream(access_mode \\ :grpcweb) do
     %Stream{
       adapter: @adaptor,
       server: @server_name,
       rpc: @rpc,
-      http_request_headers: @default_http_headers
+      http_request_headers: @default_http_headers,
+      access_mode: access_mode
     }
   end
 
   test "Sends headers CORS for for http transcoding and grpcweb requests" do
     request = %FakeRequest{}
-    stream = create_stream()
+    stream = create_stream(:http_transcode)
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :http_transcode},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: "*")
       )
 
     assert_received({:setting_headers, _headers}, "Failed to set CORS headers during grpcweb")
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: "*")
       )
 
@@ -94,13 +93,12 @@ defmodule GRPC.Server.Interceptors.CORSTest do
 
   test "Does not send CORS headers for normal grpc requests" do
     request = %FakeRequest{}
-    stream = create_stream()
+    stream = create_stream(:grpc)
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpc},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: "*")
       )
 
@@ -112,11 +110,10 @@ defmodule GRPC.Server.Interceptors.CORSTest do
     stream = Map.put(create_stream(), :access_mode, :grpcweb)
     domain = "https://mydomain.io"
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: domain)
       )
 
@@ -138,15 +135,13 @@ defmodule GRPC.Server.Interceptors.CORSTest do
     request = %FakeRequest{}
     stream = Map.put(create_stream(), :access_mode, :grpcweb)
 
-    # fetch the interceptor state from the fake endpoint
-    [{_interceptor, interceptor_state}] =
-      GRPC.Server.Interceptors.CORSTest.Endpoint.FunctionCapture.__meta__(:interceptors)
+    %{endpoint: [{CORSInterceptor, interceptor_state}]} =
+      GRPC.Endpoint.interceptors(GRPC.Server.Interceptors.CORSTest.Endpoint.FunctionCapture)
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         interceptor_state
       )
 
@@ -156,19 +151,18 @@ defmodule GRPC.Server.Interceptors.CORSTest do
     )
   end
 
-  test "CORS allow origin header value is configuraable with binary concatenation" do
+  test "CORS allow origin header value is configurable with binary concatenation" do
     request = %FakeRequest{}
     stream = Map.put(create_stream(), :access_mode, :grpcweb)
 
     # fetch the interceptor state from the fake endpoint
-    [{_interceptor, interceptor_state}] =
-      GRPC.Server.Interceptors.CORSTest.Endpoint.BinaryConcatenation.__meta__(:interceptors)
+    %{endpoint: [{CORSInterceptor, interceptor_state}]} =
+      GRPC.Endpoint.interceptors(GRPC.Server.Interceptors.CORSTest.Endpoint.BinaryConcatenation)
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         interceptor_state
       )
 
@@ -196,11 +190,10 @@ defmodule GRPC.Server.Interceptors.CORSTest do
           )
     }
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: "*")
       )
 
@@ -226,11 +219,10 @@ defmodule GRPC.Server.Interceptors.CORSTest do
 
     allowed_headers = "Test"
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: "*", allow_headers: allowed_headers)
       )
 
@@ -255,14 +247,13 @@ defmodule GRPC.Server.Interceptors.CORSTest do
     }
 
     # fetch the interceptor state from the fake endpoint
-    [{_interceptor, interceptor_state}] =
-      GRPC.Server.Interceptors.CORSTest.Endpoint.FunctionCapture.__meta__(:interceptors)
+    %{endpoint: [{CORSInterceptor, interceptor_state}]} =
+      GRPC.Endpoint.interceptors(GRPC.Server.Interceptors.CORSTest.Endpoint.FunctionCapture)
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         interceptor_state
       )
 
@@ -281,11 +272,10 @@ defmodule GRPC.Server.Interceptors.CORSTest do
         http_request_headers: Map.put(@default_http_headers, "sec-fetch-mode", "same-origin")
     }
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: "*")
       )
 
@@ -301,11 +291,10 @@ defmodule GRPC.Server.Interceptors.CORSTest do
         http_request_headers: Map.delete(@default_http_headers, "sec-fetch-mode")
     }
 
-    {:ok, :ok} =
+    {:cont, ^request, ^stream} =
       CORSInterceptor.call(
         request,
-        %{stream | access_mode: :grpcweb},
-        fn _request, _stream -> {:ok, :ok} end,
+        stream,
         CORSInterceptor.init(allow_origin: "*")
       )
 

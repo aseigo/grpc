@@ -42,6 +42,7 @@ defmodule GRPC.Server.Stream do
           http_method: GRPC.Server.Router.http_method(),
           http_request_headers: map(),
           http_transcode: boolean(),
+          interceptors: GRPC.Endpoint.interceptors(),
           __interface__: map()
         }
 
@@ -64,6 +65,7 @@ defmodule GRPC.Server.Stream do
             http_method: :post,
             http_request_headers: %{},
             http_transcode: false,
+            interceptors: %{endpoint: [], servers: %{}},
             __interface__: %{send_reply: &__MODULE__.send_reply/3}
 
   def send_reply(%{is_preflight?: true} = stream, _reply, opts) do

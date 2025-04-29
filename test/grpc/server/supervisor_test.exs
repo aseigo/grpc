@@ -4,7 +4,9 @@ defmodule GRPC.Server.SupervisorTest do
   alias GRPC.Server.Supervisor
 
   defmodule MockEndpoint do
-    def __meta__(_), do: [FeatureServer]
+    def __meta__(:interceptors), do: []
+    def __meta__(:servers), do: [FeatureServer]
+    def __meta__(:server_interceptors), do: %{}
   end
 
   describe "init/1" do

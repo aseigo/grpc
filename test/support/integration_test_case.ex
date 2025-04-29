@@ -12,11 +12,7 @@ defmodule GRPC.Integration.TestCase do
   def run_endpoint(endpoint, func, opts \\ [port: 0]) when is_list(opts) do
     full_opts = Keyword.put(opts, :adapter, GRPC.Server.Adapters.Cowboy)
 
-    port =
-      case GRPC.Endpoint.start(endpoint, full_opts) do
-        {:ok, _pid, port} -> port
-        {:error, {:already_started, _pid}} -> :error
-      end
+    {:ok, _pid, port} = GRPC.Endpoint.start(endpoint, full_opts)
 
     try do
       func.(port)

@@ -17,6 +17,7 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
           endpoint :: module(),
           server :: module(),
           route :: String.t(),
+          interceptors :: String.t(),
           opts :: keyword()
         }
 
@@ -50,7 +51,7 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
   the `GRPC.Server` macro)
   """
   @spec init(:cowboy_req.req(), state :: init_state) :: init_result
-  def init(req, {endpoint, server, route, opts} = state) do
+  def init(req, {endpoint, server, route, interceptors, opts} = state) do
     http_method =
       req
       |> :cowboy_req.method()
@@ -76,7 +77,8 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
         http_transcode: http_transcode,
         compressor: compressor,
         is_preflight?: preflight?(req),
-        access_mode: access_mode
+        access_mode: access_mode,
+        interceptors: interceptors
       }
 
       server_rpc_pid = :proc_lib.spawn_link(__MODULE__, :call_rpc, [server, route, stream])
