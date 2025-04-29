@@ -29,13 +29,13 @@ defmodule GRPC.Server.Adapters.Cowboy do
     * `:ipv6_v6only` - If true, only bind on IPv6 addresses (default: `false`).
   """
   @impl true
-  def start(endpoint, servers, port, opts) do
-    start_args = cowboy_start_args(endpoint, servers, port, opts)
+  def start(endpoint, port, opts) do
+    start_args = cowboy_start_args(endpoint, port, opts)
     start_func = if opts[:cred], do: :start_tls, else: :start_clear
 
     case apply(:cowboy, start_func, start_args) do
       {:ok, pid} ->
-        port = :ranch.get_port(servers_name(endpoint, servers))
+        port = :ranch.get_port(server_name(endpoint))
         {:ok, pid, port}
 
       other ->
@@ -46,10 +46,10 @@ defmodule GRPC.Server.Adapters.Cowboy do
   @doc """
   Return a child_spec to start server. See `GRPC.Server.Adapters.Cowboy.start/4` for a list of supported options.
   """
-  @spec child_spec(atom(), %{String.t() => [module()]}, non_neg_integer(), Keyword.t()) ::
+  @spec child_spec(endpoint :: module(), port :: non_neg_integer(), Keyword.t()) ::
           Supervisor.child_spec()
-  def child_spec(endpoint, servers, port, opts) do
-    [ref, trans_opts, proto_opts] = cowboy_start_args(endpoint, servers, port, opts)
+  def child_spec(endpoint, port, opts) do
+    [ref, trans_opts, proto_opts] = cowboy_start_args(endpoint, port, opts)
     trans_opts = Map.put(trans_opts, :connection_type, :supervisor)
 
     {transport, protocol} =
@@ -65,7 +65,7 @@ defmodule GRPC.Server.Adapters.Cowboy do
       {ref, mfa, type, timeout, kind, modules} ->
         scheme = if opts[:cred], do: :https, else: :http
         # Wrap real mfa to print starting log
-        wrapped_mfa = {__MODULE__, :start_link, [scheme, endpoint, servers, mfa]}
+        wrapped_mfa = {__MODULE__, :start_link, [scheme, endpoint, mfa]}
 
         %{
           id: ref,
@@ -82,17 +82,17 @@ defmodule GRPC.Server.Adapters.Cowboy do
   end
 
   # spec: :supervisor.mfargs doesn't work
-  @spec start_link(atom(), atom(), %{String.t() => [module()]}, any()) ::
+  @spec start_link(atom(), atom(), any()) ::
           {:ok, pid()} | {:error, any()}
-  def start_link(scheme, endpoint, servers, {m, f, [ref | _] = a}) do
+  def start_link(scheme, endpoint, {m, f, [ref | _] = a}) do
     case apply(m, f, a) do
       {:ok, pid} ->
-        Logger.info(running_info(scheme, endpoint, servers, ref))
+        Logger.info(running_info(scheme, endpoint, ref))
         {:ok, pid}
 
       {:error, {:shutdown, {_, _, {{_, {:error, :eaddrinuse}}, _}}}} = error ->
         Logger.error([
-          running_info(scheme, endpoint, servers, ref),
+          running_info(scheme, endpoint, ref),
           " failed, port already in use"
         ])
 
@@ -104,8 +104,8 @@ defmodule GRPC.Server.Adapters.Cowboy do
   end
 
   @impl true
-  def stop(endpoint, servers) do
-    :cowboy.stop_listener(servers_name(endpoint, servers))
+  def stop(endpoint) do
+    :cowboy.stop_listener(server_name(endpoint))
   end
 
   @spec read_body(GRPC.Server.Adapter.state()) :: {:ok, binary()}
@@ -192,9 +192,11 @@ defmodule GRPC.Server.Adapters.Cowboy do
     Handler.set_compressor(pid, compressor)
   end
 
-  defp build_handlers(endpoint, servers, opts) do
-    Enum.flat_map(servers, fn {_name, server_mod} = server ->
-      routes = server_mod.__meta__(:routes)
+  defp build_handlers(endpoint, opts) do
+    :servers
+    |> endpoint.__meta__()
+    |> Enum.flat_map(fn server ->
+      routes = server.__meta__(:routes)
       Enum.map(routes, &build_route(&1, endpoint, server, opts))
     end)
   end
@@ -207,13 +209,12 @@ defmodule GRPC.Server.Adapters.Cowboy do
     {match, GRPC.Server.Adapters.Cowboy.Handler, {endpoint, server, path, Enum.into(opts, %{})}}
   end
 
-  defp cowboy_start_args(endpoint, servers, port, opts) do
+  defp cowboy_start_args(endpoint, port, opts) do
     # Custom handler to be able to listen in the same port, more info:
     # https://github.com/containous/traefik/issues/6211
     {adapter_opts, opts} = Keyword.pop(opts, :adapter_opts, [])
     status_handler = Keyword.get(adapter_opts, :status_handler)
-
-    handlers = build_handlers(endpoint, servers, opts)
+    handlers = build_handlers(endpoint, opts)
 
     handlers =
       if status_handler do
@@ -249,7 +250,7 @@ defmodule GRPC.Server.Adapters.Cowboy do
       )
 
     [
-      servers_name(endpoint, servers),
+      server_name(endpoint),
       %{
         num_acceptors: num_acceptors,
         max_connections: max_connections,
@@ -285,7 +286,7 @@ defmodule GRPC.Server.Adapters.Cowboy do
     end
   end
 
-  defp running_info(scheme, endpoint, servers, ref) do
+  defp running_info(scheme, endpoint, ref) do
     {addr, port} = :ranch.get_addr(ref)
 
     addr_str =
@@ -297,14 +298,10 @@ defmodule GRPC.Server.Adapters.Cowboy do
           "#{:inet.ntoa(addr)}:#{port}"
       end
 
-    "Running #{servers_name(endpoint, servers)} with Cowboy using #{scheme}://#{addr_str}"
+    "Running #{server_name(endpoint)} with Cowboy using #{scheme}://#{addr_str}"
   end
 
-  defp servers_name(nil, servers) do
-    servers |> Map.values() |> Enum.map(fn s -> inspect(s) end) |> Enum.join(",")
-  end
-
-  defp servers_name(endpoint, _) do
+  defp server_name(endpoint) do
     inspect(endpoint)
   end
 end

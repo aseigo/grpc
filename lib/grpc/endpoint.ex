@@ -92,6 +92,16 @@ defmodule GRPC.Endpoint do
     end
   end
 
+  @doc false
+  @spec stop_endpoint(atom(), Keyword.t()) :: any()
+  def stop_endpoint(endpoint, opts \\ []) do
+    adapter = opts[:adapter]
+
+    if :code.is_loaded(adapter) != false do
+      adapter.stop(endpoint)
+    end
+  end
+
   defp server_interceptors([], acc), do: acc
 
   defp server_interceptors([{servers, %{interceptors: interceptors}} | tail], acc0)

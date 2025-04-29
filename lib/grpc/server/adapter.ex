@@ -12,14 +12,13 @@ defmodule GRPC.Server.Adapter do
         }
 
   @callback start(
-              atom(),
-              %{String.t() => [module()]},
+              endpoint :: module(),
               port :: non_neg_integer(),
               opts :: keyword()
             ) ::
               {atom(), any(), non_neg_integer()}
 
-  @callback stop(atom(), %{String.t() => [module()]}) :: :ok | {:error, :not_found}
+  @callback stop(endpoint :: module()) :: :ok | {:error, :not_found}
 
   @callback send_reply(state, content :: binary(), opts :: keyword()) :: any()
 

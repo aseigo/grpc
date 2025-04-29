@@ -14,8 +14,8 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
   @default_trailers HTTP2.server_trailers()
 
   @type init_state :: {
-          endpoint :: atom(),
-          server :: {name :: String.t(), module()},
+          endpoint :: module(),
+          server :: module(),
           route :: String.t(),
           opts :: keyword()
         }
@@ -50,7 +50,7 @@ defmodule GRPC.Server.Adapters.Cowboy.Handler do
   the `GRPC.Server` macro)
   """
   @spec init(:cowboy_req.req(), state :: init_state) :: init_result
-  def init(req, {endpoint, {_name, server}, route, opts} = state) do
+  def init(req, {endpoint, server, route, opts} = state) do
     http_method =
       req
       |> :cowboy_req.method()

@@ -3,30 +3,21 @@ defmodule GRPC.Server.Supervisor do
   A simple supervisor to start your servers.
 
   You can add it to your OTP tree as below.
-  To start the server, you can pass `start_server: true` and an option
+  To start the server, pass `start_server: true` and an option defining at a minimum the Endpoint to use.
 
       defmodule Your.App do
         use Application
 
         def start(_type, _args) do
           children = [
-            {GRPC.Server.Supervisor, endpoint: Your.Endpoint, port: 50051, start_server: true, ...}]
+            {GRPC.Server.Supervisor, endpoint: Your.Endpoint, port: 443, start_server: true, ...}]
 
           Supervisor.start_link(children, strategy: :one_for_one, name: __MODULE__)
         end
       end
-
   """
 
   use Supervisor
-
-  # TODO: remove this type after support Elixir 1.14 exclusively.
-  @type sup_flags() :: %{
-          strategy: Supervisor.strategy(),
-          intensity: non_neg_integer(),
-          period: pos_integer(),
-          auto_shutdown: Supervisor.auto_shutdown()
-        }
 
   @default_adapter GRPC.Server.Adapters.Cowboy
   require Logger
@@ -35,96 +26,52 @@ defmodule GRPC.Server.Supervisor do
     Supervisor.start_link(__MODULE__, endpoint)
   end
 
+  @type endpoint_opt :: {:endpoint, module}
+  @type port_opt :: {:port, pos_integer}
+  @type credentials_opt :: {:cred, GRPC.Credential.t}
+  @type start_server_opt :: {:start_server, boolean}
+  @type grpc_server_supervisor_opts :: endpoint_opt | port_opt | credentials_opt | start_server_opt
+
   @doc """
   ## Options
 
-    * `:endpoint` - defines the endpoint module that will be started.
-    * `:port` - the HTTP port for the endpoint.
-    * `:servers` - the list of servers that will be be started.
-
-  Either `:endpoint` or `:servers` must be present, but not both.
+    * `:endpoint` - the name of the Endpoint module this Supervisor will use
+    * `:start_server` - boolean, determines if the server will be started.
+      If present, has more precedence then the `config :gprc, :start_server`
+      config value (i.e. `start_server: false` will not start the server in any case).
+    * `:cred` - a credential created by functions of `GRPC.Credential`. An insecure HTTP server will be created without this option, while a server with TLS enabled will be started if provided.
+    * `:port` - the port to use for the HTTP service, defaults to port 80 or 443 depending on whether SSL is enabled or not
   """
-  @spec init(tuple()) :: no_return
-  @spec init(keyword()) :: {:ok, {sup_flags(), [Supervisor.child_spec()]}} | :ignore
+  @spec init([grpc_server_supervisor_opts]) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}} | :ignore
   def init(opts)
 
-  def init(opts) when is_tuple(opts) do
-    raise ArgumentError,
-          "passing a tuple as configuration for GRPC.Server.Supervisor is no longer supported. See the documentation for more information on how to configure."
-  end
-
   def init(opts) when is_list(opts) do
-    unless is_nil(Application.get_env(:grpc, :start_server)) do
-      raise "the :start_server config key has been deprecated.\
-      The currently supported way is to configure it\
-      through the :start_server option for the GRPC.Server.Supervisor"
-    end
-
-    opts = Keyword.validate!(opts, [:endpoint, :servers, :start_server, :port])
-
-    endpoint_or_servers =
-      case {opts[:endpoint], opts[:servers]} do
-        {endpoint, servers}
-        when (not is_nil(endpoint) and not is_nil(servers)) or
-               (is_nil(endpoint) and is_nil(servers)) ->
-          raise ArgumentError, "either :endpoint or :servers must be passed, but not both."
-
-        {endpoint, nil} ->
-          endpoint
-
-        {nil, servers} when not is_list(servers) ->
-          raise ArgumentError, "either :servers must be a list of modules"
-
-        {nil, servers} when is_list(servers) ->
-          servers
-      end
-
-    children =
-      if opts[:start_server] do
-        [child_spec(endpoint_or_servers, opts[:port], opts)]
-      else
-        []
-      end
-
+    start_directive = if opts[:start_server], do: :start_server, else: :noop
+    children = child_spec(start_directive, opts[:endpoint], opts)
     Supervisor.init(children, strategy: :one_for_one)
   end
 
   @doc """
   Return a child_spec to start server.
-
-  ## Options
-
-    * `:cred` - a credential created by functions of `GRPC.Credential`,
-      an insecure server will be created without this option
-    * `:start_server` - determines if the server will be started.
-      If present, has more precedence then the `config :gprc, :start_server`
-      config value (i.e. `start_server: false` will not start the server in any case).
   """
-  @spec child_spec(endpoint_or_servers :: atom() | [atom()], port :: integer, opts :: keyword()) ::
+  @spec child_spec(start_directive :: :stert_server | term, endpoint_module :: atom(), opts :: keyword()) ::
           Supervisor.Spec.spec()
-  def child_spec(endpoint_or_servers, port, opts \\ [])
+  def child_spec(setart_directive, endpoint, opts \\ [])
 
-  def child_spec(endpoint, port, opts) when is_atom(endpoint) do
-    {endpoint, servers} =
-      try do
-        {endpoint, endpoint.__meta__(:servers)}
-      rescue
-        FunctionClauseError ->
-          Logger.warning(
-            "deprecated: servers as argument of GRPC.Server.Supervisor, please use GRPC.Endpoint"
-          )
-
-          {nil, endpoint}
-      end
-
+  def child_spec(:start_server, endpoint, opts) when is_atom(endpoint) do
+    port = Keyword.get(opts, :port, default_port(opts))
+    servers = endpoint.__meta__(:servers)
     adapter = Keyword.get(opts, :adapter) || @default_adapter
     servers = GRPC.Server.servers_to_map(servers)
-    adapter.child_spec(endpoint, servers, port, opts)
+    [adapter.child_spec(endpoint, servers, port, opts)]
   end
 
-  def child_spec(servers, port, opts) when is_list(servers) do
-    adapter = Keyword.get(opts, :adapter) || @default_adapter
-    servers = GRPC.Server.servers_to_map(servers)
-    adapter.child_spec(nil, servers, port, opts)
+  def child_spec(_do_not_start_server, _endpoint, _opts), do: []
+
+  defp default_port(opts) do
+    case Keyword.get(opts, :cred) do
+      nil -> 80
+      _some_value -> 443
+    end
   end
 end
