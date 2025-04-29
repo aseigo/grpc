@@ -19,7 +19,6 @@ defmodule GRPC.Server.Supervisor do
 
   use Supervisor
 
-  @default_adapter GRPC.Server.Adapters.Cowboy
   require Logger
 
   def start_link(endpoint) do
@@ -28,9 +27,10 @@ defmodule GRPC.Server.Supervisor do
 
   @type endpoint_opt :: {:endpoint, module}
   @type port_opt :: {:port, pos_integer}
-  @type credentials_opt :: {:cred, GRPC.Credential.t}
+  @type credentials_opt :: {:cred, GRPC.Credential.t()}
   @type start_server_opt :: {:start_server, boolean}
-  @type grpc_server_supervisor_opts :: endpoint_opt | port_opt | credentials_opt | start_server_opt
+  @type grpc_server_supervisor_opts ::
+          endpoint_opt | port_opt | credentials_opt | start_server_opt
 
   @doc """
   ## Options
@@ -42,7 +42,8 @@ defmodule GRPC.Server.Supervisor do
     * `:cred` - a credential created by functions of `GRPC.Credential`. An insecure HTTP server will be created without this option, while a server with TLS enabled will be started if provided.
     * `:port` - the port to use for the HTTP service, defaults to port 80 or 443 depending on whether SSL is enabled or not
   """
-  @spec init([grpc_server_supervisor_opts]) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}} | :ignore
+  @spec init([grpc_server_supervisor_opts]) ::
+          {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}} | :ignore
   def init(opts)
 
   def init(opts) when is_list(opts) do
@@ -54,16 +55,22 @@ defmodule GRPC.Server.Supervisor do
   @doc """
   Return a child_spec to start server.
   """
-  @spec child_spec(start_directive :: :stert_server | term, endpoint_module :: atom(), opts :: keyword()) ::
+  @spec child_spec(
+          start_directive :: :stert_server | term,
+          endpoint_module :: atom(),
+          opts :: keyword()
+        ) ::
           Supervisor.Spec.spec()
-  def child_spec(setart_directive, endpoint, opts \\ [])
+  def child_spec(start_directive, endpoint, opts \\ [])
 
   def child_spec(:start_server, endpoint, opts) when is_atom(endpoint) do
-    port = Keyword.get(opts, :port, default_port(opts))
-    servers = endpoint.__meta__(:servers)
-    adapter = Keyword.get(opts, :adapter) || @default_adapter
-    servers = GRPC.Server.servers_to_map(servers)
-    [adapter.child_spec(endpoint, servers, port, opts)]
+    sanitized_opts =
+      opts
+      |> Keyword.put(:port, Keyword.get(opts, :port, default_port(opts)))
+      |> Keyword.put(:endpoint, endpoint)
+
+    adapter = Keyword.get(opts, :adapter, GRPC.Server.Adapter.default())
+    [adapter.child_spec(sanitized_opts)]
   end
 
   def child_spec(_do_not_start_server, _endpoint, _opts), do: []

@@ -29,7 +29,8 @@ defmodule GRPC.Server.Adapters.Cowboy do
     * `:ipv6_v6only` - If true, only bind on IPv6 addresses (default: `false`).
   """
   @impl true
-  def start(endpoint, port, opts) do
+  def start(endpoint, opts \\ []) do
+    port = Keyword.get(opts, :port, 0)
     start_args = cowboy_start_args(endpoint, port, opts)
     start_func = if opts[:cred], do: :start_tls, else: :start_clear
 
@@ -43,12 +44,18 @@ defmodule GRPC.Server.Adapters.Cowboy do
     end
   end
 
+  @impl true
+  def stop(endpoint) do
+    :cowboy.stop_listener(server_name(endpoint))
+  end
+
   @doc """
   Return a child_spec to start server. See `GRPC.Server.Adapters.Cowboy.start/4` for a list of supported options.
   """
-  @spec child_spec(endpoint :: module(), port :: non_neg_integer(), Keyword.t()) ::
-          Supervisor.child_spec()
-  def child_spec(endpoint, port, opts) do
+  @spec child_spec(Keyword.t()) :: Supervisor.child_spec()
+  def child_spec(opts) do
+    endpoint = Keyword.get(opts, :endpoint)
+    port = Keyword.get(opts, :port)
     [ref, trans_opts, proto_opts] = cowboy_start_args(endpoint, port, opts)
     trans_opts = Map.put(trans_opts, :connection_type, :supervisor)
 
@@ -101,11 +108,6 @@ defmodule GRPC.Server.Adapters.Cowboy do
       {:error, _} = error ->
         error
     end
-  end
-
-  @impl true
-  def stop(endpoint) do
-    :cowboy.stop_listener(server_name(endpoint))
   end
 
   @spec read_body(GRPC.Server.Adapter.state()) :: {:ok, binary()}
