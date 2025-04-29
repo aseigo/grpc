@@ -5,10 +5,10 @@ defmodule GRPC.Client.Adapters.MintTest do
 
   describe "connect/2" do
     setup do
-      {:ok, _, port} = GRPC.Server.start(FeatureServer, 0)
+      {:ok, _, port} = GRPC.Endpoint.start(FeatureEndpoint, port: 0)
 
       on_exit(fn ->
-        :ok = GRPC.Server.stop(FeatureServer)
+        :ok = GRPC.Endpoint.stop(FeatureEndpoint)
       end)
 
       %{port: port}

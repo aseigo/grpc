@@ -43,7 +43,7 @@ defmodule GRPC.Integration.ClientInterceptorTest do
     end
   end
 
-  defmodule HelloEndpoint do
+  defmodule Endpoint do
     use GRPC.Endpoint
 
     run(HelloServer)
@@ -58,7 +58,7 @@ defmodule GRPC.Integration.ClientInterceptorTest do
       stop_client_name
     ])
 
-    run_endpoint(HelloEndpoint, fn port ->
+    run_endpoint(Endpoint, fn port ->
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}",
           interceptors: [
@@ -100,7 +100,7 @@ defmodule GRPC.Integration.ClientInterceptorTest do
         exception_client_name
       ])
 
-      run_endpoint(HelloEndpoint, fn port ->
+      run_endpoint(Endpoint, fn port ->
         delay = floor(:rand.uniform() * 500) + 500
 
         {:ok, channel} =

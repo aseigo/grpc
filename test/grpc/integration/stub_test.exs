@@ -9,12 +9,22 @@ defmodule GRPC.Integration.StubTest do
     end
   end
 
+  defmodule HelloEndpoint do
+    use GRPC.Endpoint
+    run(HelloServer)
+  end
+
   defmodule SlowServer do
     use GRPC.Server, service: Helloworld.Greeter.Service
 
     def say_hello(_req, _stream) do
       Process.sleep(1000)
     end
+  end
+
+  defmodule SlowEndpoint do
+    use GRPC.Endpoint
+    run(SlowServer)
   end
 
   def port_for(pid) do
@@ -31,7 +41,7 @@ defmodule GRPC.Integration.StubTest do
   end
 
   test "you can disconnect stubs" do
-    run_server(HelloServer, fn port ->
+    run_endpoint(HelloEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
       %{adapter_payload: %{conn_pid: gun_conn_pid}} = channel
@@ -49,7 +59,7 @@ defmodule GRPC.Integration.StubTest do
   end
 
   test "disconnecting a disconnected channel is a no-op" do
-    run_server(HelloServer, fn port ->
+    run_endpoint(HelloEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       {:ok, channel} = GRPC.Stub.disconnect(channel)
       {:ok, _channel} = GRPC.Stub.disconnect(channel)
@@ -57,7 +67,7 @@ defmodule GRPC.Integration.StubTest do
   end
 
   test "body larger than 2^14 works" do
-    run_server(HelloServer, fn port ->
+    run_endpoint(HelloEndpoint, fn port ->
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}", interceptors: [GRPC.Client.Interceptors.Logger])
 
@@ -77,7 +87,7 @@ defmodule GRPC.Integration.StubTest do
   end
 
   test "returns error when timeout" do
-    run_server(SlowServer, fn port ->
+    run_endpoint(SlowEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       req = %Helloworld.HelloRequest{name: "Elixir"}
 

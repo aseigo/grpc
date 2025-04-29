@@ -14,16 +14,12 @@ end
 defmodule GRPC.Test.ServerAdapter do
   @behaviour GRPC.Server.Adapter
 
-  def start(s, h, p, opts) do
-    {s, h, p, opts}
+  def start(endpoint, opts) do
+    {endpoint, opts}
   end
 
-  def stop(server) do
-    {server}
-  end
-
-  def stop(endpoint, server) do
-    {endpoint, server}
+  def stop(endpoint) do
+    {endpoint}
   end
 
   def send_reply(stream, data, _opts) do

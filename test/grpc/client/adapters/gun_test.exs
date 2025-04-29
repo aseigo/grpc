@@ -6,10 +6,10 @@ defmodule GRPC.Client.Adapters.GunTest do
   describe "connect/2" do
     setup do
       server_credential = build(:credential)
-      {:ok, _, port} = GRPC.Server.start(FeatureServer, 0, cred: server_credential)
+      {:ok, _, port} = GRPC.Endpoint.start(FeatureEndpoint, cred: server_credential)
 
       on_exit(fn ->
-        :ok = GRPC.Server.stop(FeatureServer)
+        :ok = GRPC.Endpoint.stop(FeatureEndpoint)
       end)
 
       %{

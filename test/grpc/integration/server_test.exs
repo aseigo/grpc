@@ -15,6 +15,11 @@ defmodule GRPC.Integration.ServerTest do
     end
   end
 
+  defmodule FeatureServerEndpoint do
+    use GRPC.Endpoint
+    run(FeatureServer)
+  end
+
   defmodule TranscodeErrorServer do
     use GRPC.Server,
       service: Transcode.Messaging.Service,
@@ -25,6 +30,11 @@ defmodule GRPC.Integration.ServerTest do
 
       raise GRPC.RPCError, status: status
     end
+  end
+
+  defmodule TranscodeErrorEndpoint do
+    use GRPC.Endpoint
+    run(TranscodeErrorServer)
   end
 
   defmodule TranscodeServer do
@@ -83,6 +93,11 @@ defmodule GRPC.Integration.ServerTest do
     end
   end
 
+  defmodule TranscodeEndpoint do
+    use GRPC.Endpoint
+    run(TranscodeServer)
+  end
+
   defmodule HelloServer do
     use GRPC.Server, service: Helloworld.Greeter.Service
 
@@ -127,6 +142,11 @@ defmodule GRPC.Integration.ServerTest do
     end
   end
 
+  defmodule HelloEndpoint do
+    use GRPC.Endpoint
+    run(HelloServer)
+  end
+
   defmodule HelloErrorServer do
     use GRPC.Server, service: Helloworld.Greeter.Service
 
@@ -137,6 +157,11 @@ defmodule GRPC.Integration.ServerTest do
     def say_hello(_req, _stream) do
       raise GRPC.RPCError, status: GRPC.Status.unauthenticated(), message: "Please authenticate"
     end
+  end
+
+  defmodule HelloErrorEndpoint do
+    use GRPC.Endpoint
+    run(HelloErrorServer)
   end
 
   defmodule FeatureErrorServer do
@@ -157,12 +182,22 @@ defmodule GRPC.Integration.ServerTest do
     end
   end
 
+  defmodule FeatureErrorEndpoint do
+    use GRPC.Endpoint
+    run(FeatureErrorServer)
+  end
+
   defmodule TimeoutServer do
     use GRPC.Server, service: Routeguide.RouteGuide.Service
 
     def list_features(_rectangle, _stream) do
       Process.sleep(600)
     end
+  end
+
+  defmodule TimeoutEndpoint do
+    use GRPC.Endpoint
+    run(TimeoutServer)
   end
 
   defmodule SlowServer do
@@ -182,14 +217,30 @@ defmodule GRPC.Integration.ServerTest do
     end
   end
 
+  defmodule SlowEndpoint do
+    use GRPC.Endpoint
+    run(SlowServer)
+  end
+
   defmodule HTTP1Server do
     def init(req, state) do
       {:ok, :cowboy_req.reply(200, %{}, "OK", req), state}
     end
   end
 
+  defmodule HTTP1Endpoint do
+    use GRPC.Endpoint
+    run(HTTP1Server)
+  end
+
+  defmodule MultiServerEndpoint do
+    use GRPC.Endpoint
+    run(FeatureServer)
+    run(HelloServer)
+  end
+
   test "multiple servers works" do
-    run_server([FeatureServer, HelloServer], fn port ->
+    run_endpoint(MultiServerEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       point = %Routeguide.Point{latitude: 409_146_138, longitude: -746_188_906}
       {:ok, feature} = channel |> Routeguide.RouteGuide.Stub.get_feature(point)
@@ -204,8 +255,8 @@ defmodule GRPC.Integration.ServerTest do
   test "HTTP/1 status handler can be started along a gRPC server" do
     status_handler = {"/status", HTTP1Server, []}
 
-    run_server(
-      [HelloServer],
+    run_endpoint(
+      HelloEndpoint,
       fn port ->
         {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
         req = %Helloworld.HelloRequest{name: "Elixir"}
@@ -218,7 +269,7 @@ defmodule GRPC.Integration.ServerTest do
 
         assert_received {:gun_response, ^conn_pid, ^stream_ref, :nofin, 200, _headers}
       end,
-      0,
+      port: 0,
       adapter_opts: [status_handler: status_handler]
     )
   end
@@ -226,7 +277,7 @@ defmodule GRPC.Integration.ServerTest do
   test "returns appropriate error for unary requests" do
     logs =
       ExUnit.CaptureLog.capture_log(fn ->
-        run_server([HelloErrorServer], fn port ->
+        run_endpoint(HelloErrorEndpoint, fn port ->
           {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
           req = %Helloworld.HelloRequest{name: "Elixir"}
           {:error, reply} = channel |> Helloworld.Greeter.Stub.say_hello(req)
@@ -244,7 +295,7 @@ defmodule GRPC.Integration.ServerTest do
   test "return errors for unknown errors" do
     logs =
       ExUnit.CaptureLog.capture_log(fn ->
-        run_server([HelloErrorServer], fn port ->
+        run_endpoint(HelloErrorEndpoint, fn port ->
           {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
           req = %Helloworld.HelloRequest{name: "unknown error"}
 
@@ -258,7 +309,7 @@ defmodule GRPC.Integration.ServerTest do
   end
 
   test "returns appropriate error for stream requests" do
-    run_server([FeatureErrorServer], fn port ->
+    run_endpoint(FeatureErrorEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       rect = %Routeguide.Rectangle{}
       error = %GRPC.RPCError{message: "Please authenticate", status: 16}
@@ -267,7 +318,7 @@ defmodule GRPC.Integration.ServerTest do
   end
 
   test "return large response(more than MAX_FRAME_SIZE 16384)" do
-    run_server([HelloServer], fn port ->
+    run_endpoint(HelloEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       req = %Helloworld.HelloRequest{name: "large response"}
       {:ok, reply} = channel |> Helloworld.Greeter.Stub.say_hello(req)
@@ -277,7 +328,7 @@ defmodule GRPC.Integration.ServerTest do
   end
 
   test "return deadline error for slow server" do
-    run_server([TimeoutServer], fn port ->
+    run_endpoint(TimeoutEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       rect = %Routeguide.Rectangle{}
       error = %GRPC.RPCError{message: "Deadline expired", status: 4}
@@ -288,7 +339,7 @@ defmodule GRPC.Integration.ServerTest do
   end
 
   test "return normally for a little slow server" do
-    run_server([SlowServer], fn port ->
+    run_endpoint(SlowEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       low = %Routeguide.Point{latitude: 400_000_000, longitude: -750_000_000}
       high = %Routeguide.Point{latitude: 420_000_000, longitude: -730_000_000}
@@ -302,7 +353,7 @@ defmodule GRPC.Integration.ServerTest do
   end
 
   test "headers set on channel are present in receiving server" do
-    run_server([HelloServer], fn port ->
+    run_endpoint(HelloEndpoint, fn port ->
       token = "Bearer TOKEN"
 
       {:ok, channel} =
@@ -317,7 +368,7 @@ defmodule GRPC.Integration.ServerTest do
   end
 
   test "get peer returns correct IP address" do
-    run_server([HelloServer], fn port ->
+    run_endpoint(HelloEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
       req = %Helloworld.HelloRequest{name: "get peer"}
@@ -327,7 +378,7 @@ defmodule GRPC.Integration.ServerTest do
   end
 
   test "get cert returns correct client certificate when not present" do
-    run_server([HelloServer], fn port ->
+    run_endpoint(HelloEndpoint, fn port ->
       assert {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
       req = %Helloworld.HelloRequest{name: "get cert"}
@@ -339,7 +390,7 @@ defmodule GRPC.Integration.ServerTest do
   test "gracefully handles server shutdown disconnects" do
     logs =
       ExUnit.CaptureLog.capture_log(fn ->
-        run_server(FeatureServer, fn port ->
+        run_endpoint(FeatureServerEndpoint, fn port ->
           {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
           client_stream = Routeguide.RouteGuide.Stub.route_chat(channel)
           assert %GRPC.Client.Stream{} = client_stream
@@ -353,7 +404,7 @@ defmodule GRPC.Integration.ServerTest do
 
   describe "http/json transcode" do
     test "grpc method can be called using json when http_transcode == true" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         name = "direct_call"
 
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
@@ -376,7 +427,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "should map grpc error codes to http status" do
-      run_server([TranscodeErrorServer], fn port ->
+      run_endpoint(TranscodeErrorEndpoint, fn port ->
         for {code_name, _status} <- [
               {"cancelled", 400},
               {"unknown", 500},
@@ -412,7 +463,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "accept: application/json can be used with get requests" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         name = "direct_call"
 
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
@@ -430,7 +481,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "can transcode path params" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         name = "foo"
 
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
@@ -451,7 +502,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "can transcode query params" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
 
         stream_ref =
@@ -470,7 +521,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "can map request body using HttpRule.body and response using HttpRule.response_body" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
 
         body = %{"name" => "name"}
@@ -494,7 +545,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "can map response body using HttpRule.response_body" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
         name = "response_body_mapper"
 
@@ -516,7 +567,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "can send streaming responses" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
 
         stream_ref =
@@ -536,7 +587,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "can use field paths in requests" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
         name = "fieldpath"
 
@@ -556,7 +607,7 @@ defmodule GRPC.Integration.ServerTest do
     end
 
     test "service methods can have the same path but different methods in http rule option" do
-      run_server([TranscodeServer], fn port ->
+      run_endpoint(TranscodeEndpoint, fn port ->
         {:ok, conn_pid} = :gun.open(~c"localhost", port)
 
         payload = %{"name" => "foo", "text" => "bar"}
@@ -615,7 +666,7 @@ defmodule GRPC.Integration.ServerTest do
         exception_client_name
       ])
 
-      run_server([HelloServer], fn port ->
+      run_endpoint(HelloEndpoint, fn port ->
         {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
         req = %Helloworld.HelloRequest{name: "delay", duration: 1000}
@@ -627,8 +678,8 @@ defmodule GRPC.Integration.ServerTest do
       assert %{monotonic_time: _, system_time: _} = measurements
 
       assert %{
-               server: HelloServer,
-               endpoint: nil,
+               server: GRPC.Integration.ServerTest.HelloServer,
+               endpoint: GRPC.Integration.ServerTest.HelloEndpoint,
                function_name: :say_hello,
                stream: %GRPC.Server.Stream{}
              } = metadata
@@ -638,8 +689,8 @@ defmodule GRPC.Integration.ServerTest do
       assert duration > 1000
 
       assert %{
-               server: HelloServer,
-               endpoint: nil,
+               server: GRPC.Integration.ServerTest.HelloServer,
+               endpoint: GRPC.Integration.ServerTest.HelloEndpoint,
                function_name: :say_hello,
                stream: %GRPC.Server.Stream{}
              } = metadata
@@ -692,7 +743,7 @@ defmodule GRPC.Integration.ServerTest do
         exception_client_name
       ])
 
-      run_server([HelloServer], fn port ->
+      run_endpoint(HelloEndpoint, fn port ->
         {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
 
         req = %Helloworld.HelloRequest{name: "raise", duration: 1100}
@@ -705,8 +756,8 @@ defmodule GRPC.Integration.ServerTest do
       assert %{monotonic_time: _, system_time: _} = measurements
 
       assert %{
-               server: HelloServer,
-               endpoint: nil,
+               server: GRPC.Integration.ServerTest.HelloServer,
+               endpoint: GRPC.Integration.ServerTest.HelloEndpoint,
                function_name: :say_hello,
                stream: %GRPC.Server.Stream{}
              } = metadata
@@ -717,7 +768,7 @@ defmodule GRPC.Integration.ServerTest do
 
       assert %{
                server: HelloServer,
-               endpoint: nil,
+               endpoint: GRPC.Integration.ServerTest.HelloEndpoint,
                function_name: :say_hello,
                stream: %GRPC.Server.Stream{},
                kind: :error,

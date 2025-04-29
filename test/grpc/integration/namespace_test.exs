@@ -9,8 +9,13 @@ defmodule GRPC.Integration.NamespaceTest do
     end
   end
 
+  defmodule FeatureEndpoint do
+    use GRPC.Endpoint
+    run(FeatureServer)
+  end
+
   test "it works when outer namespace is same with inner's" do
-    run_server(FeatureServer, fn port ->
+    run_endpoint(FeatureEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       point = %Routeguide.Point{latitude: 409_146_138, longitude: -746_188_906}
       {:ok, feature} = channel |> Routeguide.RouteGuide.Stub.get_feature(point)

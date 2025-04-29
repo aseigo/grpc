@@ -60,8 +60,13 @@ defmodule GRPC.Integration.ServiceTest do
     end
   end
 
+  defmodule FeatureServerEndpoint do
+    use GRPC.Endpoint
+    run(FeatureServer)
+  end
+
   test "unary RPC works" do
-    run_server(FeatureServer, fn port ->
+    run_endpoint(FeatureServerEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       point = %Routeguide.Point{latitude: 409_146_138, longitude: -746_188_906}
       {:ok, feature} = channel |> Routeguide.RouteGuide.Stub.get_feature(point)
@@ -70,7 +75,7 @@ defmodule GRPC.Integration.ServiceTest do
   end
 
   test "server streaming RPC works" do
-    run_server(FeatureServer, fn port ->
+    run_endpoint(FeatureServerEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       low = %Routeguide.Point{latitude: 400_000_000, longitude: -750_000_000}
       high = %Routeguide.Point{latitude: 420_000_000, longitude: -730_000_000}
@@ -85,7 +90,7 @@ defmodule GRPC.Integration.ServiceTest do
   end
 
   test "client streaming RPC works" do
-    run_server(FeatureServer, fn port ->
+    run_endpoint(FeatureServerEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       point1 = %Routeguide.Point{latitude: 400_000_000, longitude: -750_000_000}
       point2 = %Routeguide.Point{latitude: 420_000_000, longitude: -730_000_000}
@@ -98,7 +103,7 @@ defmodule GRPC.Integration.ServiceTest do
   end
 
   test "bidirectional streaming RPC works" do
-    run_server(FeatureServer, fn port ->
+    run_endpoint(FeatureServerEndpoint, fn port ->
       {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
       stream = channel |> Routeguide.RouteGuide.Stub.route_chat()
 
@@ -128,8 +133,8 @@ defmodule GRPC.Integration.ServiceTest do
   # There was a bug that blocks reading messages while sending the replies.
   # This is for the case.
   test "async bidirectional streaming RPC works" do
-    run_server(
-      FeatureServer,
+    run_endpoint(
+      FeatureServerEndpoint,
       fn port ->
         {:ok, channel} = GRPC.Stub.connect("localhost:#{port}")
         stream = channel |> Routeguide.RouteGuide.Stub.route_chat()

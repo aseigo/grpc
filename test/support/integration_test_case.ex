@@ -9,39 +9,35 @@ defmodule GRPC.Integration.TestCase do
     end
   end
 
-  def run_server(servers, func, port \\ 0, opts \\ []) do
-    {:ok, _pid, port} = GRPC.Server.start(servers, port, opts)
+  def run_endpoint(endpoint, func, opts \\ [port: 0]) when is_list(opts) do
+    full_opts = Keyword.put(opts, :adapter, GRPC.Server.Adapters.Cowboy)
+
+    port =
+      case GRPC.Endpoint.start(endpoint, full_opts) do
+        {:ok, _pid, port} -> port
+        {:error, {:already_started, _pid}} -> :error
+      end
 
     try do
       func.(port)
     after
-      :ok = GRPC.Server.stop(servers)
+      :ok = GRPC.Endpoint.stop(endpoint, adapter: GRPC.Server.Adapters.Cowboy)
     end
   end
 
-  def run_endpoint(endpoint, func, port \\ 0) do
-    {:ok, _pid, port} = GRPC.Server.start_endpoint(endpoint, port)
-
-    try do
-      func.(port)
-    after
-      :ok = GRPC.Server.stop_endpoint(endpoint, [])
-    end
-  end
-
-  def reconnect_server(server, port, retry \\ 3) do
-    result = GRPC.Server.start(server, port)
+  def reconnect_endpoint(endpoint, port, retry \\ 3) do
+    result = GRPC.Endpoint.start(endpoint, port: port)
 
     case result do
       {:ok, _, ^port} ->
         result
 
       {:error, :eaddrinuse} ->
-        Logger.warning("Got eaddrinuse when reconnecting to #{server}:#{port}. retry: #{retry}")
+        Logger.warning("Got eaddrinuse when reconnecting to #{endpoint}:#{port}. retry: #{retry}")
 
         if retry >= 1 do
           Process.sleep(500)
-          reconnect_server(server, port, retry - 1)
+          reconnect_endpoint(endpoint, port, retry - 1)
         else
           result
         end

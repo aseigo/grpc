@@ -14,14 +14,12 @@ defmodule GRPC.Server.SupervisorTest do
     end
 
     test "fails if a tuple is passed" do
-      assert_raise ArgumentError,
-                   "passing a tuple as configuration for GRPC.Server.Supervisor is no longer supported. See the documentation for more information on how to configure.",
+      assert_raise FunctionClauseError,
                    fn ->
                      Supervisor.init({MockEndpoint, 1234})
                    end
 
-      assert_raise ArgumentError,
-                   "passing a tuple as configuration for GRPC.Server.Supervisor is no longer supported. See the documentation for more information on how to configure.",
+      assert_raise FunctionClauseError,
                    fn ->
                      Supervisor.init({MockEndpoint, 1234, start_server: true})
                    end

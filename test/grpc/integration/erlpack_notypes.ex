@@ -19,8 +19,13 @@ defmodule GRPC.Integration.ErplackNotypesTest do
     use GRPC.Stub, service: Helloworld.Notypes.Service
   end
 
+  defmodule Endpoint do
+    use GRPC.Endpoint
+    run(HelloServer)
+  end
+
   test "Says hello over erlpack" do
-    run_server(HelloServer, fn port ->
+    run_endpoint(Endpoint, fn port ->
       {:ok, channel} =
         GRPC.Stub.connect(
           "localhost:#{port}",
@@ -35,7 +40,7 @@ defmodule GRPC.Integration.ErplackNotypesTest do
   end
 
   test "Says hello over erlpack call level" do
-    run_server(HelloServer, fn port ->
+    run_endpoint(Endpoint, fn port ->
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}", interceptors: [GRPC.Client.Interceptors.Logger])
 

@@ -41,4 +41,9 @@ defmodule GRPC.EndpointTest do
     assert %{Server1 => [{Interceptor3, [foo: :bar]}], Server2 => mw, Server3 => mw} ==
              FooEndpoint.__meta__(:server_interceptors)
   end
+
+  test "stop/2 works" do
+    assert {FeatureEndpoint} =
+             GRPC.Endpoint.stop(FeatureEndpoint, adapter: GRPC.Test.ServerAdapter)
+  end
 end
