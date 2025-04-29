@@ -93,11 +93,21 @@ defmodule GRPC.Endpoint do
   end
 
   @doc false
-  @spec stop_endpoint(atom(), Keyword.t()) :: any()
-  def stop_endpoint(endpoint, opts \\ []) do
-    adapter = opts[:adapter]
+  @spec start(atom(), Keyword.t()) :: any()
+  def start(endpoint, opts \\ []) do
+    adapter = GRPC.Server.Adapter.from_opts(opts)
 
-    if :code.is_loaded(adapter) != false do
+    if :code.ensure_loaded(adapter) == {:module, adapter} do
+      adapter.start(endpoint, opts)
+    end
+  end
+
+  @doc false
+  @spec stop(atom(), Keyword.t()) :: any()
+  def stop(endpoint, opts \\ []) do
+    adapter = GRPC.Server.Adapter.from_opts(opts)
+
+    if :code.ensure_loaded(adapter) == {:module, adapter} do
       adapter.stop(endpoint)
     end
   end

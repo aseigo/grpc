@@ -2,6 +2,13 @@ defmodule GRPC.Server.Adapter do
   @moduledoc """
   HTTP server adapter for GRPC.
   """
+  @type adapter :: module
+
+  @spec default() :: adapter
+  def default(), do: GRPC.Server.Adapters.Cowboy
+
+  @spec from_opts(opts :: Keyword.t()) :: adapter
+  def from_opts(opts), do: Keyword.get(opts, :adapter, default())
 
   @type state :: %{
           pid: pid,
@@ -13,7 +20,6 @@ defmodule GRPC.Server.Adapter do
 
   @callback start(
               endpoint :: module(),
-              port :: non_neg_integer(),
               opts :: keyword()
             ) ::
               {atom(), any(), non_neg_integer()}
