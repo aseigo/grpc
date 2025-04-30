@@ -48,9 +48,7 @@ defmodule GRPC.Server.Adapters.CowboyTest do
 
   defp get_socket_opts_from_child_spec(spec) do
     {_Cowboy, _start_link, start_opts} = spec.start
-    [_http, _endpoint, ranch_listener_call] = start_opts
-    {_ranch_listener_sup, _start_link, ranch_listener_opts} = ranch_listener_call
-    [_endpoint, _ranch_tcp, transport_opts, _cowboy_clear, _opts_map] = ranch_listener_opts
-    transport_opts.socket_opts
+    [_endpoint, _protocol, %{socket_opts: socket_opts}, _http, _env] = start_opts
+    socket_opts
   end
 end

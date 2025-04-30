@@ -35,10 +35,10 @@ defmodule GRPC.Mixfile do
 
   defp deps do
     [
-      {:cowboy, "~> 2.10"},
-      {:gun, "~> 2.0"},
+      {:cowboy, "~> 2.13"},
+      {:gun, "~> 2.2"},
       {:jason, ">= 0.0.0", optional: true},
-      {:cowlib, "~> 2.12"},
+      {:cowlib, "~> 2.15"},
       {:castore, "~> 0.1 or ~> 1.0", optional: true},
       {:protobuf, "~> 0.14"},
       {:protobuf_generate, "~> 0.1.1", only: [:dev, :test]},

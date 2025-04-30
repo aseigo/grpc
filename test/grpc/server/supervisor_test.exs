@@ -34,7 +34,7 @@ defmodule GRPC.Server.SupervisorTest do
               {%{strategy: :one_for_one},
                [
                  %{
-                   id: {:ranch_listener_sup, ^endpoint_str},
+                   id: {:ranch_embedded_sup, ^endpoint_str},
                    start: _,
                    type: :supervisor
                  }
