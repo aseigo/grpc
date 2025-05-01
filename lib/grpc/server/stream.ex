@@ -41,7 +41,6 @@ defmodule GRPC.Server.Stream do
           # For http transcoding
           http_method: GRPC.Server.Router.http_method(),
           http_request_headers: map(),
-          http_transcode: boolean(),
           interceptors: GRPC.Endpoint.interceptors(),
           __interface__: map()
         }
@@ -64,7 +63,6 @@ defmodule GRPC.Server.Stream do
             is_preflight?: false,
             http_method: :post,
             http_request_headers: %{},
-            http_transcode: false,
             interceptors: %{endpoint: [], servers: %{}},
             __interface__: %{send_reply: &__MODULE__.send_reply/3}
 
